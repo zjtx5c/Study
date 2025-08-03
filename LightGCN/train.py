@@ -13,6 +13,7 @@ import dgl
 from utils import load_data, EarlyStopping_simple, calc_innerProduct
 from model import LightGCN
 from BPRDataset import BPRDataset
+from evaluate_metrics import metrics
 
 from tqdm import tqdm
 
@@ -55,8 +56,8 @@ def main(args):
     model = LightGCN(num_users, num_items, embedding_dim = args.embedding_dim, K = args.K).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = args.lr, weight_decay = args.weight_decay)
 
-
-    best_val_score = 0.0
+    best_val_hit = 0.0
+    best_val_ndcg = 0.0
     for e in range(args.epoch):
         epoch_loss = 0.0
         model.train()
@@ -72,7 +73,7 @@ def main(args):
             item_neg_embed = all_items_embed[item_neg_id]
 
 
-            # 分别计算 user 与 正样本 和 负样本的 相似度
+            # 分别计算 user 与 正样本 和 负样本的 内积
             pred_i, pred_j = calc_innerProduct(user_embed, item_pos_embed, item_neg_embed)  # [B,]
 
             bpr_loss = -torch.sum(torch.log(torch.sigmoid(pred_i - pred_j)))    # [1]
@@ -81,7 +82,6 @@ def main(args):
             loss = 0.5 * (bpr_loss + args.reg * reg_loss) / args.batch_size
 
             epoch_loss = epoch_loss + bpr_loss.item() / train_step
-
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -89,27 +89,34 @@ def main(args):
         # 验证阶段
         model.eval()
         with torch.no_grad():
-            scores = []
             all_users_embed, all_items_embed = model(graph)
-
+            total_hit = 0.
+            total_ndcg_topk = 0.
             for user, item in val_dataloader:
                 user_id = user.long().to(device)    # [B,]
                 item_id = item.long().to(device)    # [B,]
 
-                user_embed = all_users_embed[user_id]   # [B, D]
-                item_embed = all_items_embed[item_id]   # [B, D]
-
-                sim = F.cosine_similarity(user_embed, item_embed, dim = 1)
-                scores.append(sim.cpu().numpy())
+                # hit, ndcg = metrics(user_id, item_id, all_users_embed, all_items_embed, args.top_k)
+                hit, ndcg = metrics(
+                    user_id, item_id,
+                    all_users_embed, all_items_embed,
+                    args.top_k,
+                    train_matrix = dataset["train"]["matrix"]  # 传训练集矩阵
+                )
+                total_hit = total_hit + hit
+                total_ndcg_topk = total_ndcg_topk + ndcg
             
-            val_score = np.mean(np.concatenate(scores))
-            best_val_score = max(best_val_score, val_score)
-            stop = stopper.step(val_score, e, model)
+            hit_score = total_hit / len(val_dataset)
+            ndcg_score = total_ndcg_topk / len(val_dataset)
+            stop = stopper.step(ndcg_score, e, model)
+            if best_val_ndcg < ndcg_score:
+                best_val_ndcg = ndcg_score
+                best_val_hit = hit_score
             if stop:
                 print('best epoch :', stopper.best_epoch)
                 break
         
-        print(f"In epoch {e}, Train_loss: {epoch_loss}, Val_score: {val_score:.4f}, Best_Val_score: {best_val_score:.4f}")
+        print(f"In epoch {e}, Train_loss: {epoch_loss}, Val_ndcg: {ndcg_score:.4f}, Val_hit: {hit_score:.4f}, Best_Val_ndcg: {best_val_ndcg:.4f}, Best_Val_hit: {best_val_hit:.4f}")
         
 
     # 测试模式
@@ -117,22 +124,26 @@ def main(args):
     model.load_state_dict(torch.load(os.path.join(args.model_save_path, "LightGCN_model.pt")))
     model.eval()
     with torch.no_grad():
-        scores = []
         all_users_embed, all_items_embed = model(graph)
-        
+        total_hit = 0.
+        total_ndcg_topk = 0.
         for user, item in test_dataloader:
             user_id = user.long().to(device)    # [B,]
             item_id = item.long().to(device)    # [B,]
 
-            user_embed = all_users_embed[user_id]   # [B, D]
-            item_embed = all_items_embed[item_id]   # [B, D]
+            hit, ndcg = metrics(
+                user_id, item_id,
+                all_users_embed, all_items_embed,
+                args.top_k,
+                train_matrix = dataset["train"]["matrix"]  # 传训练集矩阵
+            )
+            total_hit += hit
+            total_ndcg_topk += ndcg
 
-            sim = F.cosine_similarity(user_embed, item_embed, dim = 1)
-            scores.append(sim.cpu().numpy())
-        
-        test_score = np.mean(np.concatenate(scores))
+        hit_score = total_hit / len(test_dataset)
+        ndcg_score = total_ndcg_topk / len(test_dataset)
 
-    print(f"test_score: {test_score:.4f}")
+    print(f"Test ndcg: {ndcg_score:.4f}, Test hit: {hit_score:.4f}")
 
 
 
@@ -147,10 +158,11 @@ if __name__ == '__main__':
     parser.add_argument("--epoch", type = int, default = 10000)
     parser.add_argument("--batch-size", type = int, default = 4096)
     parser.add_argument("--embedding-dim", type = int, default = 64)
+    parser.add_argument("--top-k", type = int, default = 10)
     parser.add_argument("--K", type = int, default = 3)
     parser.add_argument("--patience", type = int, default = 100)
 
-    parser.add_argument("--lr", type = float, default = 0.05)
+    parser.add_argument("--lr", type = float, default = 0.01)
     parser.add_argument("--weight-decay", type = float, default = 0)
     parser.add_argument("--reg", type = float, default = 0.001)
 
