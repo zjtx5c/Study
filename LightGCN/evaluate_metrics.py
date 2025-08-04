@@ -36,7 +36,7 @@
 import torch
 import numpy as np
 
-def metrics(user_id, item_id, all_users_embed, all_items_embed, top_k, train_matrix=None):
+def metrics(user_id, item_id, all_users_embed, all_items_embed, top_k, train_matrix = None):
     '''
     user_id: [B,]
     item_id: [B,]
@@ -57,14 +57,14 @@ def metrics(user_id, item_id, all_users_embed, all_items_embed, top_k, train_mat
             candidate_scores[row_idx, interacted_items] = -1e9  # 设为极小值
 
     # ---- 计算 Top-K ----
-    topk_indices = torch.topk(candidate_scores, k=top_k, dim=1).indices  # [B, K]
+    topk_indices = torch.topk(candidate_scores, k = top_k, dim = 1).indices  # [B, K]
 
     hits_mask = (item_id.unsqueeze(1) == topk_indices)  # [B, K]
     hit_total = hits_mask.any(dim=1).sum().item()
 
-    rank = torch.full((user_id.size(0),), -1, dtype=torch.long, device=device)
-    hit_rows = hits_mask.any(dim=1)
-    rank[hit_rows] = hits_mask[hit_rows].int().argmax(dim=1)
+    rank = torch.full((user_id.size(0),), -1, dtype=torch.long, device = device)
+    hit_rows = hits_mask.any(dim = 1)
+    rank[hit_rows] = hits_mask[hit_rows].int().argmax(dim = 1)
 
     valid_ranks = rank[rank != -1].float()
     ndcg_total = torch.sum(1.0 / torch.log2(valid_ranks + 2.0)).item()

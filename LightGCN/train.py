@@ -155,14 +155,14 @@ if __name__ == '__main__':
     parser.add_argument("--u2i-data-file", type = str, default = r"D:\PY\JUPYTER\study\datasets\LightGCN\phone\inter.npz")
     parser.add_argument("--model-save-path", type = str, default = r"D:\PY\JUPYTER\study\LightGCN\ckpt")
 
-    parser.add_argument("--epoch", type = int, default = 10000)
-    parser.add_argument("--batch-size", type = int, default = 4096)
-    parser.add_argument("--embedding-dim", type = int, default = 64)
-    parser.add_argument("--top-k", type = int, default = 10)
+    parser.add_argument("--epoch", type = int, default = 2000)
+    parser.add_argument("--batch-size", type = int, default = 2048)
+    parser.add_argument("--embedding-dim", type = int, default = 128)
+    parser.add_argument("--top-k", type = int, default = 100)
     parser.add_argument("--K", type = int, default = 3)
-    parser.add_argument("--patience", type = int, default = 100)
+    parser.add_argument("--patience", type = int, default = 30)
 
-    parser.add_argument("--lr", type = float, default = 0.01)
+    parser.add_argument("--lr", type = float, default = 0.005)
     parser.add_argument("--weight-decay", type = float, default = 0)
     parser.add_argument("--reg", type = float, default = 0.001)
 
